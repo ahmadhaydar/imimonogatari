@@ -14,6 +14,21 @@ env\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### 4. Run the Blazegraph Server
+```
+java -server -Xmx4g -jar blazegraph.jar
+```
+
+### 5. Clean the database
+Go to http://localhost:9999/blazegraph/#update and Run
+```
+DROP ALL
+```
+Then load the manga.ttl
+```
+load <file:///universal/path/to/manga.ttl>
+```
+
 ### 3. Run the server
 ```
 uvicorn main:app --reload
