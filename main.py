@@ -10,10 +10,12 @@ print("Graph loaded.")
 
 # search by title query
 # Example get: http://localhost:8000/search?query_string=boku
+
+
 @app.get("/search")
 async def search(query_string: str):
     qres = g.query(
-"""
+        """
 PREFIX imir:  <http://imimonogatari.org/resource/>
 PREFIX imip: <http://imimonogatari.org/property/>
 PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -43,6 +45,7 @@ SELECT ?s ?label (group_concat(DISTINCT ?title;separator=", ") as ?titles) (grou
     )
     # return as json
     return [row.asdict() for row in qres]
+
 
 @app.get("/")
 def read_root():
