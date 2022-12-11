@@ -14,6 +14,11 @@ python -m venv env
 pip install -r requirements.txt
 ```
 
+### 3. Run the server
+```
+uvicorn main:app --reload
+```
+
 ### Note
 If installing new packages please run this after
 ```
