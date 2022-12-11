@@ -6,7 +6,7 @@ A backend for querying manga rdf
 ```
 python -m venv env
 
-\env\Scripts\activate
+env\Scripts\activate
 ```
 
 ### 2. Install requirements
