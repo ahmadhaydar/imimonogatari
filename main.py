@@ -17,7 +17,7 @@ def get_query(query):
         params={"query": query},
         headers={"Accept": "application/sparql-results+json"},
     )
-    return response
+    return {"data": [dict((k, v["value"]) for k, v in item.items()) for item in response.json()["results"]["bindings"]]}
 
 # How to run
 # http://localhost:8000/search?search_label=boku
@@ -55,4 +55,4 @@ SELECT ?s ?label (group_concat(DISTINCT ?title;separator=", ") as ?titles) (grou
 """ % search_label
     # Get the response
     response = get_query(query)
-    return {"data": [dict((k, v["value"]) for k, v in item.items()) for item in response.json()["results"]["bindings"]]}
+    return response
