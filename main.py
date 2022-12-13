@@ -72,7 +72,7 @@ SELECT ?s ?label (group_concat(DISTINCT ?title;separator=", ") as ?titles) (grou
 # ...
 # example curl
 # make it accept json
-# curl -H "Content-Type: application/json" -X GET -d '[{"type": "title", "value": "boku", "optional": false}, {"type": "genre", "value": "action", "optional": false}, {"type": "author", "value": "kazuma", "optional": false}, {"type": "publisher", "value": "kodansha", "optional": false}]' http://localhost:8000/search/filter
+# curl -H "Content-Type: application/json" -X GET -d '{"search_filter" : [{"type": "title", "value": "boku", "optional": false}, {"type": "genre", "value": "action", "optional": false}, {"type": "author", "value": "kazuma", "optional": false}, {"type": "publisher", "value": "kodansha", "optional": false}]}' http://localhost:8000/search/filter
 
 
 class SearchFilter(BaseModel):
