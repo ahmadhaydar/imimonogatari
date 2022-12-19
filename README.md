@@ -31,7 +31,7 @@ Then load the manga.ttl
 load <file:///universal/path/to/manga.ttl>
 ```
 
-### 3. Run the server
+### 6. Run the server
 ```
 uvicorn main:app --reload
 ```
