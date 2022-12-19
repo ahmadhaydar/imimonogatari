@@ -19,7 +19,9 @@ pip install -r requirements.txt
 java -server -Xmx4g -jar blazegraph.jar
 ```
 
-### 5. Clean the database
+### 5. Clean the database (for first timer)
+Create new namespace with name `bds`, full text index checked
+
 Go to http://localhost:9999/blazegraph/#update and Run
 ```
 DROP ALL

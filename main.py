@@ -15,52 +15,75 @@ def get_query(query):
     # result set in JSON using Accept headers, Accept:application/sparql-results+json
     # do GET request blazegraph endpoint
     response = request.get(
-        "http://localhost:9999/blazegraph/namespace/kb/sparql",
+        "http://localhost:9999/blazegraph/namespace/bds/sparql",
         params={"query": query},
         headers={"Accept": "application/sparql-results+json"},
     )
     return {"data": [dict((k, v["value"]) for k, v in item.items()) for item in response.json()["results"]["bindings"]]}
 
-# How to run
-# http://localhost:8000/search?search_label=boku
-
 
 @app.get("/search")
-def search(search_label: str):
+def search(query_field: str, safe_search: bool = False):
+    # How to run
+    # http://localhost:8000/search?query_field=Naruto
     # Set the query
+    sfw_query = ""
+    if safe_search == True:
+        sfw_query = "?s imip:sfw true ."
     query = """
-    PREFIX imir:  <http://imimonogatari.org/resource/>
+PREFIX imir:  <http://imimonogatari.org/resource/>
 PREFIX imip: <http://imimonogatari.org/property/>
 PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-SELECT ?s ?label (group_concat(DISTINCT ?title;separator=", ") as ?titles) (group_concat(DISTINCT ?genre;separator=", ") as ?genres) ?comment ?malUrl (group_concat(DISTINCT ?author;separator=", ") as ?authors) ?publisherLabel WHERE {
+PREFIX bds:    <http://www.bigdata.com/rdf/search#>
+SELECT ?s ?label ?thumbnail (GROUP_CONCAT(DISTINCT ?genre; SEPARATOR = ", ") AS ?genres) (GROUP_CONCAT(DISTINCT ?author; SEPARATOR = ", ") AS ?authors) ?publisherLabel ?rel WHERE {
+  {
+    SELECT ?s (SUM(?relevance) AS ?rel) WHERE {
+      {
+        ?s rdf:type imir:Works;
+          ?property ?label.
+        SERVICE bds:search {
+          ?label bds:search "%s";
+            bds:relevance ?relevance.
+        }
+      }
+      UNION
+      {
+        ?s rdf:type imir:Works;
+          ?property ?label.
+        ?label rdfs:label ?labelInner.
+        SERVICE bds:search {
+          ?labelInner bds:search "%s";
+            bds:relevance ?relevance.
+        }
+      }
+    }
+    GROUP BY ?s
+    ORDER BY DESC (?rel)
+  }
   ?s rdf:type imir:Works;
     rdfs:label ?label;
-    rdfs:comment ?comment;
-    imip:title ?title;
     imip:genre ?genreId;
-    imip:malUrl ?malUrl.
-  
-  ?s ?subProperty ?authorId .
-  ?subProperty rdfs:subPropertyOf imip:author .
-  ?authorId rdfs:label ?author .
-  
-  ?genreId rdfs:label ?genre .
-  
+    ?subProperty ?authorId.
+  ?subProperty rdfs:subPropertyOf imip:author.
+  ?authorId rdfs:label ?author.
+  ?genreId rdfs:label ?genre.
   OPTIONAL {
-    ?s imip:publishedBy ?publisher .
-    ?publisher rdfs:label ?publisherLabel .
+    ?s imip:publishedBy ?publisher.
+    ?publisher rdfs:label ?publisherLabel.
   }
-  
-  FILTER(REGEX(?title, "%s", "i"))
-} GROUP BY ?s ?label ?comment ?malUrl ?publisherLabel
-""" % search_label
+  OPTIONAL { ?s imip:malPicture ?thumbnail. }
+  %s
+}
+GROUP BY ?s ?label ?comment ?thumbnail ?publisherLabel ?rel
+ORDER BY DESC (?rel)
+""" % ( query_field, query_field, sfw_query )
     # Get the response
     response = get_query(query)
     return response
 
 # get query based on various search filters
-# input: [{"type": "title", "value": "boku", "optional": false}, {"type": "genre", "value": "action", "optional": false}, {"type": "author", "value": "kazuma", "optional": false}, {"type": "publisher", "value": "kodansha", "optional": false}]
+# input: [{"type": "title", "value": "boku", "optional": "false"}, {"type": "genre", "value": "action", "optional": "false"}, {"type": "author", "value": "kazuma", "optional": "false"}]
 # output: {
 #   "data": [
 #     {
@@ -72,7 +95,6 @@ SELECT ?s ?label (group_concat(DISTINCT ?title;separator=", ") as ?titles) (grou
 # ...
 # example curl
 # make it accept json
-# curl -H "Content-Type: application/json" -X GET -d '{"search_filter" : [{"type": "title", "value": "boku", "optional": false}, {"type": "genre", "value": "action", "optional": false}, {"type": "author", "value": "kazuma", "optional": false}, {"type": "publisher", "value": "kodansha", "optional": false}]}' http://localhost:8000/search/filter
 
 
 class SearchFilter(BaseModel):
@@ -81,12 +103,8 @@ class SearchFilter(BaseModel):
     optional: bool
 
 
-class SearchFilterList(BaseModel):
-    search_filter: List[SearchFilter]
-
-
-@app.get("/search/filter")
-def search_filter(search_filter: SearchFilterList):
+@app.post("/search/filter")
+def search_filter(search_filter: List[SearchFilter]):
     # Set the query
     query = """
     PREFIX imir:  <http://imimonogatari.org/resource/>
