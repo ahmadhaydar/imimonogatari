@@ -23,7 +23,7 @@ def get_query(query):
 
 
 @app.get("/search")
-def search(query_field: str, safe_search: bool = False):
+def search(query_field: str, safe_search: bool = False, limit: int = 100):
     # How to run
     # http://localhost:8000/search?query_field=Naruto
     # Set the query
@@ -60,6 +60,7 @@ SELECT ?s ?label ?thumbnail (GROUP_CONCAT(DISTINCT ?genre; SEPARATOR = ", ") AS 
     }
     GROUP BY ?s
     ORDER BY DESC (?rel)
+    LIMIT %i
   }
   ?s rdf:type imir:Works;
     rdfs:label ?label;
@@ -77,7 +78,7 @@ SELECT ?s ?label ?thumbnail (GROUP_CONCAT(DISTINCT ?genre; SEPARATOR = ", ") AS 
 }
 GROUP BY ?s ?label ?comment ?thumbnail ?publisherLabel ?rel
 ORDER BY DESC (?rel)
-""" % ( query_field, query_field, sfw_query )
+""" % ( query_field, query_field, limit, sfw_query )
     # Get the response
     response = get_query(query)
     return response
