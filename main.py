@@ -1,6 +1,7 @@
 from typing import List
 import requests as request
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -79,6 +80,84 @@ SELECT ?s ?label ?thumbnail (GROUP_CONCAT(DISTINCT ?genre; SEPARATOR = ", ") AS 
 GROUP BY ?s ?label ?comment ?thumbnail ?publisherLabel ?rel
 ORDER BY DESC (?rel)
 """ % ( query_field, query_field, limit, sfw_query )
+    # Get the response
+    response = get_query(query)
+    return response
+
+@app.get("/search/filter")
+def search_filter(search_title: str = Query(default=None), search_publisher: str = Query(default=None), search_genre: List[str] = Query(default=[]),
+search_author: List[str] = Query(default=[]), safe_search: bool = False):
+    if search_title == None and search_publisher == None and len(search_genre) == 0 and len(search_author) == 0:
+      return JSONResponse(status_code=400, content={"message": "Filter arguments not filled"})
+
+    #Set the query
+    query = """
+        PREFIX imir:  <http://imimonogatari.org/resource/>
+        PREFIX imip: <http://imimonogatari.org/property/>
+        PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX bds: <http://www.bigdata.com/rdf/search#>
+
+        SELECT DISTINCT ?s ?label ?thumbnail ?comment (GROUP_CONCAT(DISTINCT ?title;separator=", ") as ?titles) (GROUP_CONCAT(DISTINCT ?genre; SEPARATOR = ", ") AS ?genres) (GROUP_CONCAT(DISTINCT ?author; SEPARATOR = ", ") AS ?authors) ?malUrl ?publisherLabel where {
+          
+          ?s rdf:type imir:Works ;
+            rdfs:label ?label ;
+            rdfs:comment ?comment;
+            imip:title ?title;
+            imip:genre ?genreId ;
+            imip:malUrl ?malUrl ;
+            ?subProperty ?authorId .
+          ?subProperty rdfs:subPropertyOf imip:author .
+          ?authorId rdfs:label ?author .
+          ?genreId rdfs:label ?genre . \n
+    """
+    if safe_search:
+      query += "?s imip:sfw true . \n"
+    if search_title:
+      query += """  SERVICE bds:search {?title bds:search "%s".} \n""" %search_title
+    if search_publisher:
+      query += """  SERVICE bds:search {?publisherLabel bds:search "%s".} \n""" %search_publisher
+    else:
+      query += """
+          OPTIONAL {
+            ?s imip:publishedBy ?publisher.
+            ?publisher rdfs:label ?publisherLabel.
+          }
+      """
+    query += """  OPTIONAL { ?s imip:malPicture ?thumbnail. } \n"""
+
+    # Add the filters
+    for author in search_author:
+      query += """
+          {SELECT ?s WHERE {
+            ?s rdf:type imir:Works;
+              ?subProperty ?authorId .
+            ?subProperty rdfs:subPropertyOf imip:author .
+            ?authorId rdfs:label ?author .
+            
+            service bds:search {
+                ?author bds:search "%s" .
+            }
+          } GROUP BY ?s} \n
+            """ % (author)
+    
+    for genre in search_genre:
+      query += """
+          {SELECT ?s WHERE {
+            ?s rdf:type imir:Works;
+              imip:genre ?genreId .
+            ?genreId rdfs:label ?genre .
+            
+            service bds:search {
+                ?genre bds:search "%s" .
+            }
+          } GROUP BY ?s} \n
+            """ % (genre)
+
+    # Close the query
+    query += """
+    } GROUP BY ?s ?label ?thumbnail ?comment ?malUrl ?publisherLabel
+    """
     # Get the response
     response = get_query(query)
     return response
