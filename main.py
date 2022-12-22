@@ -34,7 +34,10 @@ def get_query(query):
         params={"query": query},
         headers={"Accept": "application/sparql-results+json"},
     )
-    return {"data": [dict((k, v["value"]) for k, v in item.items()) for item in response.json()["results"]["bindings"]]}
+    if response.status_code == 200:
+        return {"data": [dict((k, v["value"]) for k, v in item.items()) for item in response.json()["results"]["bindings"]]}
+    else:
+        return {"error": response.content}
 
 
 @app.get("/search")
