@@ -86,7 +86,7 @@ ORDER BY DESC (?rel)
 
 @app.get("/search/filter")
 def search_filter(search_title: str = Query(default=None), search_publisher: str = Query(default=None), search_genre: List[str] = Query(default=[]),
-search_author: List[str] = Query(default=[]), safe_search: bool = False):
+search_author: List[str] = Query(default=[]), offset: int = Query(default=0), safe_search: bool = False):
     if search_title == None and search_publisher == None and len(search_genre) == 0 and len(search_author) == 0:
       return JSONResponse(status_code=400, content={"message": "Filter arguments not filled"})
 
@@ -114,31 +114,36 @@ search_author: List[str] = Query(default=[]), safe_search: bool = False):
     if safe_search:
       query += "?s imip:sfw true . \n"
     if search_title:
-      query += """  SERVICE bds:search {?title bds:search "%s".} \n""" %search_title
+      query += """ 
+          SERVICE bds:search {?title bds:search "%s"; bds:relevance ?titRel} \n""" %search_title
     if search_publisher:
-      query += """  SERVICE bds:search {?publisherLabel bds:search "%s".} \n""" %search_publisher
+      query += """  
+          ?s imip:publishedBy ?publisher.
+          ?publisher rdfs:label ?publisherLabel.
+          SERVICE bds:search {?publisherLabel bds:search "%s"; bds:relevance ?pubRel} \n""" %search_publisher
     else:
       query += """
           OPTIONAL {
             ?s imip:publishedBy ?publisher.
-            ?publisher rdfs:label ?publisherLabel.
+            ?publisher rdfs:label ?publisherLabel. \n
           }
       """
-    query += """  OPTIONAL { ?s imip:malPicture ?thumbnail. } \n"""
+    query += """   
+          OPTIONAL { ?s imip:malPicture ?thumbnail. } \n"""
 
     # Add the filters
     for author in search_author:
       query += """
-          {SELECT ?s WHERE {
+          {SELECT ?s ?authRel WHERE {
             ?s rdf:type imir:Works;
               ?subProperty ?authorId .
             ?subProperty rdfs:subPropertyOf imip:author .
             ?authorId rdfs:label ?author .
             
             service bds:search {
-                ?author bds:search "%s" .
+                ?author bds:search "%s" ; bds:relevance ?authRel .
             }
-          } GROUP BY ?s} \n
+          } GROUP BY ?s ?authRel} \n
             """ % (author)
     
     for genre in search_genre:
@@ -155,9 +160,17 @@ search_author: List[str] = Query(default=[]), safe_search: bool = False):
             """ % (genre)
 
     # Close the query
-    query += """
-    } GROUP BY ?s ?label ?thumbnail ?comment ?malUrl ?publisherLabel
-    """
+    query += "} GROUP BY ?s ?label ?thumbnail ?comment ?malUrl ?publisherLabel "
+
+    # Order by and Offset
+    if search_title:
+      query += "ORDER BY DESC(MAX(?titRel))"
+    elif search_author:
+      query += "ORDER BY DESC(MAX(?authRel))"
+    elif search_publisher:
+      query += "ORDER BY DESC(?pubRel)"
+    query += f"LIMIT 100 OFFSET {offset}"
+
     # Get the response
     response = get_query(query)
     return response
