@@ -1,16 +1,30 @@
 from fastapi import FastAPI, Header, Query
 from fastapi.responses import RedirectResponse, Response, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import requests as request
 from typing import Union, List
 from pydantic import BaseModel
-
 app = FastAPI()
 
+origins = [
+    "http://localhost:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def main():
+    return {"message": "Hello World"}
 
 @app.get("/resource/{resource_id}")
-def resource(resource_id: str, accept: Union[str, None]=Header(default=None)):
+def resource(resource_id: str, accept: Union[str, None]=Header(default="application/x-turtle")):
     query = """
-    
 SELECT ?property ?value WHERE {
     <http://imimonogatari.org/resource/%s> ?property ?value .
 }
@@ -208,11 +222,15 @@ SELECT ?property ?value WHERE {
 
 @app.get("/wikidata")
 def wikidata(manga_id: str):
-    mal_id_response = get_query(f"select ?malId where {{ <http://imimonogatari.org/resource/{manga_id}> <http://imimonogatari.org/property/malId> ?malId }}")
+    if 'http' in manga_id:
+        manga_uri = f'<{manga_id}>'
+    else:
+        manga_uri = f'<http://imimonogatari.org/resource/{manga_id}>'
+    mal_id_response = get_query(f"select ?malId where {{ {manga_uri} <http://imimonogatari.org/property/malId> ?malId }}")
     if "error" in mal_id_response:
         return mal_id_response
     elif len(mal_id_response["data"]) == 0:
-        return {"error": f"Manga {manga_id} not found"}
+        return {"error": f"Work {manga_id} not found"}
     else:
         mal_id = mal_id_response["data"][0]["malId"]
         query = """
@@ -220,28 +238,42 @@ PREFIX wikibase: <http://wikiba.se/ontology#>
 PREFIX p: <http://www.wikidata.org/prop/>
 PREFIX ps: <http://www.wikidata.org/prop/statement/>
 PREFIX bd: <http://www.bigdata.com/rdf#>
+PREFIX schema: <http://schema.org/>
 
-SELECT DISTINCT (?item as ?wikidataURI) (?itemLabel as ?label) ?mangadexLink WHERE {     
+SELECT DISTINCT (?item as ?wikidataURI) (?itemLabel as ?label) ?mangadexLink ?wikipediaLink (group_concat(?character;separator="|") as ?characters) (group_concat(?characterLabel;separator="|") as ?characterLabels) (group_concat(?malCharacterLink;separator="|") as ?malCharacterLinks) ("|" as ?separator) WHERE {
   SERVICE <https://query.wikidata.org/sparql> {
     {
-      SELECT DISTINCT ?item ?itemLabel ?mangadexId ?mangadexLink WHERE {
+      SELECT DISTINCT ?item ?itemLabel ?mangadexId ?wikipediaLink ?character ?characterLabel ?malCharacterID WHERE {
         SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
                 {
-                  SELECT DISTINCT ?item ?mangadexId WHERE {
+                  SELECT DISTINCT ?item ?mangadexId ?wikipediaLink ?character ?malCharacterID WHERE {
                     
-                    ?item p:P4087 ?s_malId .
-                    ?s_malId (ps:P4087) "%s" .
-                    ?item p:P10589 ?s_mdId .
-                    ?s_mdId (ps:P10589) ?mangadexId .
-                  }
-                                  LIMIT 100
+                    ?item p:P4087 [ (ps:P4087) "%s" ] ;
+                          p:P10589 [ (ps:P10589) ?mangadexId ] .
+                    optional {
+                    ?wikipediaLink schema:about ?item ;
+                             schema:inLanguage "en" ;
+                             schema:isPartOf <https://en.wikipedia.org/> .
+                    }
+                    optional {
+                      ?item p:P674 [ (ps:P674) ?character ] .
+                      ?character p:P4085 [ (ps:P4085) ?malCharacterID ]
+                            
+                    }
+                  } limit 100 
                 }
       }
     }
   }
     bind(concat("https://mangadex.org/title/", str(?mangadexId)) as ?mangadexLink)
-}
+    bind(concat("https://myanimelist.net/character/", str(?malCharacterID)) as ?malCharacterLink)
+} group by ?item ?itemLabel?mangadexLink ?wikipediaLink
         """ % (mal_id)
         response = get_query(query)
-        return response['data'][0]
-    
+        if len(response["data"]) != 0:
+            list_cols = ["characterLabels",
+                         "characters",
+                         "malCharacterLinks"]
+            response["data"][0]["characters"] = list(zip(*(response["data"][0].pop(col).split(response["data"][0]["separator"]) for col in list_cols)))
+        return response
+        
