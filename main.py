@@ -205,3 +205,43 @@ SELECT ?property ?value WHERE {
     # Get the response
     response = get_query(query)
     return response
+
+@app.get("/wikidata")
+def wikidata(manga_id: str):
+    mal_id_response = get_query(f"select ?malId where {{ <http://imimonogatari.org/resource/{manga_id}> <http://imimonogatari.org/property/malId> ?malId }}")
+    if "error" in mal_id_response:
+        return mal_id_response
+    elif len(mal_id_response["data"]) == 0:
+        return {"error": f"Manga {manga_id} not found"}
+    else:
+        mal_id = mal_id_response["data"][0]["malId"]
+        query = """
+PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX p: <http://www.wikidata.org/prop/>
+PREFIX ps: <http://www.wikidata.org/prop/statement/>
+PREFIX bd: <http://www.bigdata.com/rdf#>
+
+SELECT DISTINCT (?item as ?wikidataURI) (?itemLabel as ?label) ?mangadexLink WHERE {     
+  SERVICE <https://query.wikidata.org/sparql> {
+    {
+      SELECT DISTINCT ?item ?itemLabel ?mangadexId ?mangadexLink WHERE {
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+                {
+                  SELECT DISTINCT ?item ?mangadexId WHERE {
+                    
+                    ?item p:P4087 ?s_malId .
+                    ?s_malId (ps:P4087) "%s" .
+                    ?item p:P10589 ?s_mdId .
+                    ?s_mdId (ps:P10589) ?mangadexId .
+                  }
+                                  LIMIT 100
+                }
+      }
+    }
+  }
+    bind(concat("https://mangadex.org/title/", str(?mangadexId)) as ?mangadexLink)
+}
+        """ % (mal_id)
+        response = get_query(query)
+        return response['data'][0]
+    
